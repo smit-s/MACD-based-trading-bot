@@ -7,10 +7,10 @@ import pandas as pd
 import time
 import logging
 from logging import handlers
-
+import datetime
 
 class processor:
-    def __init__(self, trade_qty, gap):
+    def __init__(self,strat, trade_qty, gap):
         """
 
         :param trade_qty: quantity of shares to trade.
@@ -30,9 +30,15 @@ class processor:
         self.ln3, = self.ax[1].plot([], [], lw=1, label='macd')
         self.ln4, = self.ax[1].plot([], [], 'ro', label='cross')
         self.logger = logging.getLogger('Tradeway')
-        logHandler = handlers.RotatingFileHandler('tradeway.log', maxBytes=500, backupCount=20)
+        logHandler = handlers.RotatingFileHandler('tradeway.log', maxBytes=2000000, backupCount=20)
         self.logger.setLevel(logging.DEBUG)
         self.logger.addHandler(logHandler)
+
+    def position_exist(self,arr):
+        for i in range(len(arr)):
+            if(arr[i]["ScripName"]==self.strat.scrip_code and float(arr[i]["BuyAvgRate"])>0):
+                return True
+        return False
 
     def execute_trade(self, sig, price):
         """
@@ -40,12 +46,13 @@ class processor:
         :param sig: buy or sell or hold
         :param price: price at which order shall be placed.
         """
+        self.logger.debug("Date- "+str(datetime.datetime.timestamp()) )
         if (sig == 'buy'):
             #get all poitions
             pos_list = self.strat.client.get_positions()
             self.logger.debug("pos_list- " + str(pos_list))
             #create a new order only if there is no open position to avoid overbuying.
-            if (len(pos_list) == 0):
+            if (not self.position_exist(pos_list)):
                 order_list = self.strat.client.get_orders()
                 self.logger.debug("order- " + str(order_list))
                 my_order_info = None
@@ -67,16 +74,21 @@ class processor:
                     self.strat.client.modify_orders(exchange_id, int(my_order_info["PendingQty"]), self.strat.scrip_num,
                                                     price, "N")
 
-        elif (sig == 'sell'):
 
+
+        elif (sig == 'sell'):
+            holding_list=self.strat.client.get_holdings()
             pos_list = self.strat.client.get_positions()
             self.logger.debug("pos_list- " + str(pos_list))
             #create a new sell order only if there is an open position
             if (len(pos_list) > 0):
-                my_pos = pos_list[0]
+                my_pos = None
                 order_list = self.strat.client.get_orders()
                 self.logger.debug("order- " + str(order_list))
-
+                for i in range(len(pos_list)):
+                    if (pos_list[i]["ScripName"] == self.strat.scrip_code and float(pos_list[i]["SellAvgRate"]) > 0):
+                        my_pos=pos_list[i]
+                        break
                 my_order_info = None
                 for order in order_list:
                     if (order["BuySell"] == 'S' and (order["RequestType"] == 'P' or order["RequestType"] == 'M') and
@@ -86,12 +98,41 @@ class processor:
                         my_order_info = order
                         break
                 #Sell on basis of price
-                if (my_order_info == None and my_pos["BuyAvgRate"] > price + self.gap):
+                self.logger.debug("Buy average- " + str(float(my_pos["BuyAvgRate"])))
+                self.logger.debug("sell price proposed- " +  str(price + self.gap))
+                if (my_pos!=None and my_order_info == None and float(my_pos["BuyAvgRate"]) > price + self.gap):
                     self.strat.client.place_order('s', self.qty, self.strat.scrip_num, price, "N")
-                elif (my_order_info != None and my_pos["BuyAvgRate"] > price + self.gap):
+                elif (my_pos!=None and my_order_info != None and float(my_pos["BuyAvgRate"]) > price + self.gap):
                     exchange_id = str(my_order_info["ExchOrderID"])
-                    self.strat.client.modify_orders(exchange_id, int(my_order_info["PendingQty"]), self.strat.scrip_num,
-                                                    price, "N")
+                    self.strat.client.modify_orders(exchange_id, int(my_order_info["PendingQty"]), self.strat.scrip_num,price, "N")
+            # if (len(holding_list) > 0):
+            #     my_pos = None
+            #     order_list = self.strat.client.get_orders()
+            #     self.logger.debug("order- " + str(order_list))
+            #     for i in range(len(holding_list)):
+            #         if (holding_list[i]["ScripName"] == self.strat.scrip_code and float(holding_list[i]["SellAvgRate"]) > 0):
+            #             my_pos = holding_list[i]
+            #             break
+            #     my_order_info = None
+            #     for order in order_list:
+            #         if (order["BuySell"] == 'S' and (order["RequestType"] == 'P' or order["RequestType"] == 'M') and
+            #                 order["ScripCode"] == self.strat.scrip_num and str(
+            #                     order["OrderStatus"]).lower().__contains__("placed")):
+            #             self.logger.debug("my-order- " + str(my_order_info))
+            #             my_order_info = order
+            #             break
+            #     # Sell on basis of price
+            #     self.logger.debug("Buy average- " + str(float(my_pos["BuyAvgRate"])))
+            #     self.logger.debug("sell price proposed- " + str(price + self.gap))
+            #     if (my_pos != None and my_order_info == None and float(my_pos["BuyAvgRate"]) > price + self.gap):
+            #         self.strat.client.place_order('s', self.qty, self.strat.scrip_num, price, "N")
+            #     elif (my_pos != None and my_order_info != None and float(my_pos["BuyAvgRate"]) > price + self.gap):
+            #         exchange_id = str(my_order_info["ExchOrderID"])
+            #         self.strat.client.modify_orders(exchange_id, int(my_order_info["PendingQty"]), self.strat.scrip_num,
+            #                                         price, "N")
+            #
+
+
 
     def start_trade(self):
         plt.legend(loc='best')
