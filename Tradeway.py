@@ -10,12 +10,13 @@ from logging import handlers
 import datetime
 
 class processor:
-    def __init__(self,strat, trade_qty, gap):
+    def __init__(self,strat, trade_qty, gap,tick_time):
         """
-
+        :param tick_time: Interval at which data is fetched
         :param trade_qty: quantity of shares to trade.
         :param gap: difference between sell and buy price at which a sell is triggered.
         """
+        self.tick_time=tick_time
         self.strat = strat
         self.gap = gap
         self.qty = trade_qty
@@ -138,7 +139,7 @@ class processor:
         plt.legend(loc='best')
         while True:
             try:
-                time.sleep(40)
+                time.sleep(self.tick_time)
                 self.logger.debug("=======Start=======")
                 # fetch signal and and price
                 sig, price, ema, macd = self.strat.update_macd()
@@ -180,6 +181,12 @@ class processor:
             except Exception as err:
                 print(err)
 
+
+
+
+
+
+# To add an interface
 
 # Uncomment following and add appropriate details and run this file
 #
